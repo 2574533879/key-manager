@@ -2,8 +2,11 @@ __pycache__
 *.pyc
 .git
 .gitignore
-.env
 data
 *.md
 .claude
 .agents
+*.gz
+Dockerfile
+LICENSE
+docker-compose.yml

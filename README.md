@@ -103,6 +103,24 @@ docker-compose logs -f
 # 4. 停止
 docker-compose down
 ```
+docker-compose.yml
+services:
+  key-manager:
+    image: key-manager:latest   
+    container_name: key-manager
+    environment:
+      - TZ=Asia/Shanghai
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - JWT_SECRET=${JWT_SECRET:-change-me-to-a-random-secret}
+      - DATABASE_URL=sqlite:////app/data/app.db
+    ports:
+      - "2052:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/.env
+    restart: unless-stopped
+
 
 数据库持久化在 `./data/app.db`，容器删除后数据不丢失。
 
@@ -134,6 +152,37 @@ docker save key-manager:latest | gzip > key-manager.tar.gz
 
 # 在目标机器导入
 docker load < key-manager.tar.gz
+mkdir ./data
+chmod 777 ./data
+```
+docker-compose.yml
+services:
+  key-manager:
+    image: key-manager:latest   
+    container_name: key-manager
+    environment:
+      - TZ=Asia/Shanghai
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - JWT_SECRET=${JWT_SECRET:-change-me-to-a-random-secret}
+      - DATABASE_URL=sqlite:////app/data/app.db
+    ports:
+      - "2052:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+    restart: unless-stopped
+```bash
+
+# 密钥随机生成
+python -c "import secrets; print(secrets.token_hex(32))"
+# 修改token密钥
+vi .env
+```
+JWT_SECRET=change-me-to-a-random-secret-in-production
+DATABASE_URL=sqlite:///./data/app.db
+```bash
+# 重启容器
 docker-compose up -d
 ```
 
