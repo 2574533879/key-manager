@@ -3,4 +3,4 @@ data/
 .env
 .claude/
 .agents/
-.gz
+*.gz
