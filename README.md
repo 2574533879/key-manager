@@ -49,10 +49,17 @@
 
 ### 管理后台（Web 界面）
 - **仪表盘** — 全局统计 + 每应用卡片（卡密数、在线数、已过期、即将过期、绑定设备数）
+<img width="1912" height="914" alt="image" src="https://github.com/user-attachments/assets/822ec52c-092a-449f-b244-bc773439f417" />
 - **应用管理** — 增删改查，自定义 app_code
+<img width="1912" height="914" alt="image" src="https://github.com/user-attachments/assets/ba9920a9-ee1c-49af-9c9b-6d7a94d5d2f4" />
 - **卡密管理** — 批量生成（前缀/后缀/自定义天数）、全字段筛选、多选批量删除、批次分组、CSV 导出（含设备码）
+<img width="1912" height="914" alt="image" src="https://github.com/user-attachments/assets/90e855c0-3cc1-48b2-b0aa-32d914e5f4bb" />
 - **回收站** — 按批次恢复或永久删除
+<img width="1912" height="914" alt="image" src="https://github.com/user-attachments/assets/8f69421c-592d-43b6-88c2-84bebab5e532" />
 - **系统设置** — API 路由前缀、心跳阈值、OTP 安全配置
+<img width="1912" height="914" alt="image" src="https://github.com/user-attachments/assets/b81ab221-8d29-4222-bece-7ad129b181db" />
+
+
 
 ### 客户端 API
 - `/api/client/auth` — 卡密验证 + 设备绑定 + 心跳（固定路径，不受前缀影响）
