@@ -161,7 +161,7 @@ docker save key-manager:latest | gzip > key-manager.tar.gz
 docker load < key-manager.tar.gz
 mkdir ./data
 chmod 777 ./data
-```
+```bash
 docker-compose.yml
 services:
   key-manager:
