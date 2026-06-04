@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}卡密详情 — 卡密管理系统{% endblock %}
+
+{% block content %}
+<a href="/keys" class="text-blue-600 hover:underline text-sm mb-4 inline-block">← 返回卡密列表</a>
+
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h1 class="text-xl font-bold mb-4" id="detail-key-code">-</h1>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm" id="detail-info"></div>
+</div>
+
+<h2 class="text-lg font-bold mb-3">绑定的设备</h2>
+<div class="bg-white rounded-lg shadow overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">机器码</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">IP地址</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">首次连接</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">最近心跳</th>
+                <th class="text-right px-4 py-3 font-medium text-gray-600">操作</th>
+            </tr>
+        </thead>
+        <tbody id="device-list" class="divide-y divide-gray-100"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+    if (!requireAuth()) return;
+    await loadApiPrefix();
+    const keyId = window.location.pathname.split('/').pop();
+    try {
+        const k = await AUTH.get(apiUrl(`/keys/${keyId}`));
+        document.getElementById('detail-key-code').textContent = k.key_code;
+        document.getElementById('detail-info').innerHTML = `
+            <div><span class="text-gray-500">应用：</span>${esc(k.app_name)}</div>
+            <div><span class="text-gray-500">类型：</span><span id="detail-type"></span></div>
+            <div><span class="text-gray-500">状态：</span>${k.status}</div>
+            <div><span class="text-gray-500">设备限制：</span>${k.device_limit}</div>
+            <div><span class="text-gray-500">已用设备：</span>${k.used_count}</div>
+            <div><span class="text-gray-500">在线：</span>${k.online?'是':'否'}</div>
+            <div><span class="text-gray-500">开始时间：</span>${k.start_time||'-'}</div>
+            <div><span class="text-gray-500">过期时间：</span>${k.expire_time||'-'}</div>
+            <div><span class="text-gray-500">创建时间：</span>${k.created_at}</div>
+        `;
+        const typeLabels = {day:'天卡',week:'周卡',month:'月卡',quarter:'季卡',year:'年卡',permanent:'永久',custom:'自定义',trial:'试用'};
+        document.getElementById('detail-type').textContent = typeLabels[k.key_type] || k.key_type;
+        const devices = k.devices || [];
+        document.getElementById('device-list').innerHTML = devices.length === 0
+            ? '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">暂无绑定设备</td></tr>'
+            : devices.map(d => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-mono text-xs">${esc(d.machine_code)}</td>
+                    <td class="px-4 py-3 text-xs">${d.ip_address||'-'}</td>
+                    <td class="px-4 py-3 text-xs text-gray-500">${d.first_seen||'-'}</td>
+                    <td class="px-4 py-3 text-xs">
+                        <span class="inline-block w-2 h-2 rounded-full mr-1 ${
+                            d.last_heartbeat ? 'bg-green-500' : 'bg-gray-300'
+                        }"></span>
+                        ${d.last_heartbeat||'-'}
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        <button onclick="unbindDevice(${keyId}, ${d.id}, '${esc(d.machine_code).substring(0,12)}...')"
+                            class="text-red-600 hover:underline text-xs">解绑</button>
+                    </td>
+                </tr>`).join('');
+    } catch(e) { showToast(e.message, 'error'); }
+})();
+async function unbindDevice(keyId, deviceId, label) {
+    if (!confirm(`确定解绑设备 [${label}] ？\\n解绑后该设备需重新激活。`)) return;
+    try {
+        const result = await AUTH.del(apiUrl(`/keys/${keyId}/devices/${deviceId}`));
+        showToast(result.message);
+        location.reload();
+    } catch(e) { showToast(e.message, 'error'); }
+}
+function esc(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+{% endblock %}

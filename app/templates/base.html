@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}卡密管理系统{% endblock %}</title>
+    <link rel="stylesheet" href="/static/tailwind.min.css">
+    <script>
+        // ── Auth helper ──────────────────────────
+        const AUTH = {
+            getToken() { return localStorage.getItem('access_token'); },
+            getRefresh() { return localStorage.getItem('refresh_token'); },
+            setTokens(access, refresh) {
+                localStorage.setItem('access_token', access);
+                if (refresh) localStorage.setItem('refresh_token', refresh);
+            },
+            clear() {
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
+            },
+            loggedIn() { return !!this.getToken(); },
+            async fetch(url, options = {}) {
+                const token = this.getToken();
+                const headers = { ...(options.headers || {}) };
+                if (options.body !== undefined && options.body !== null) {
+                    headers['Content-Type'] = 'application/json';
+                }
+                if (token) {
+                    headers['Authorization'] = 'Bearer ' + token;
+                }
+                let resp = await fetch(url, { ...options, headers });
+                if (resp.status === 401 && this.getRefresh()) {
+                    // Try refresh
+                    const refResp = await fetch(apiUrl('/auth/refresh'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ refresh_token: this.getRefresh() }),
+                    });
+                    if (refResp.ok) {
+                        const data = await refResp.json();
+                        this.setTokens(data.access_token, data.refresh_token);
+                        headers['Authorization'] = 'Bearer ' + data.access_token;
+                        resp = await fetch(url, { ...options, headers });
+                    } else {
+                        this.clear();
+                        window.location.href = '/login';
+                        throw new Error('Session expired');
+                    }
+                } else if (resp.status === 401) {
+                    this.clear();
+                    window.location.href = '/login';
+                    throw new Error('Not authenticated');
+                }
+                return resp;
+            },
+            async get(url) {
+                const resp = await this.fetch(url);
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({ message: 'Request failed' }));
+                    throw new Error(err.message || err.detail || 'Request failed');
+                }
+                return resp.json();
+            },
+            async post(url, data) {
+                const options = { method: 'POST' };
+                if (data !== null && data !== undefined) {
+                    options.body = JSON.stringify(data);
+                }
+                const resp = await this.fetch(url, options);
+                const result = await resp.json();
+                if (!resp.ok) {
+                    throw new Error(result.message || result.detail || 'Request failed');
+                }
+                return result;
+            },
+            async put(url, data) {
+                const resp = await this.fetch(url, {
+                    method: 'PUT',
+                    body: JSON.stringify(data),
+                });
+                const result = await resp.json();
+                if (!resp.ok) {
+                    throw new Error(result.message || result.detail || 'Request failed');
+                }
+                return result;
+            },
+            async del(url) {
+                const resp = await this.fetch(url, { method: 'DELETE' });
+                const result = await resp.json();
+                if (!resp.ok) {
+                    throw new Error(result.message || result.detail || 'Request failed');
+                }
+                return result;
+            },
+        };
+
+        // ── API prefix ───────────────────────────
+        let API_PREFIX = '/api';
+
+        async function loadApiPrefix() {
+            try {
+                const resp = await fetch('/api/prefix');
+                const data = await resp.json();
+                API_PREFIX = data.api_prefix || '/api';
+            } catch(e) {
+                API_PREFIX = '/api';
+            }
+        }
+
+        function apiUrl(path) {
+            // Client auth is always /api/client/...
+            if (path.startsWith('/client/')) return '/api' + path;
+            return API_PREFIX + path;
+        }
+
+        // ── Check auth on load ──────────────────
+        function requireAuth() {
+            if (!AUTH.loggedIn()) {
+                window.location.href = '/login';
+                return false;
+            }
+            return true;
+        }
+    </script>
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-50 min-h-screen">
+    {% block body %}
+    <!-- Default layout with sidebar (overridden by login page) -->
+    <div class="flex h-screen">
+        <aside class="w-56 bg-gray-900 text-white flex flex-col shrink-0">
+            <div class="px-5 py-4 text-lg font-bold border-b border-gray-700">
+                🔑 卡密管理系统
+            </div>
+            <nav class="flex-1 px-3 py-4 space-y-1">
+                <a href="/" class="block px-3 py-2 rounded text-sm hover:bg-gray-800
+                   {% if request.url.path == '/' %}bg-gray-800 font-medium{% endif %}">
+                    📊 仪表盘
+                </a>
+                <a href="/applications" class="block px-3 py-2 rounded text-sm hover:bg-gray-800
+                   {% if request.url.path.startswith('/applications') %}bg-gray-800 font-medium{% endif %}">
+                    📱 应用管理
+                </a>
+                <a href="/keys" class="block px-3 py-2 rounded text-sm hover:bg-gray-800
+                   {% if request.url.path.startswith('/keys') %}bg-gray-800 font-medium{% endif %}">
+                    🔐 卡密管理
+                </a>
+                <a href="/recycle-bin" class="block px-3 py-2 rounded text-sm hover:bg-gray-800
+                   {% if request.url.path == '/recycle-bin' %}bg-gray-800 font-medium{% endif %}">
+                    🗑️ 回收站
+                </a>
+                <a href="/settings" class="block px-3 py-2 rounded text-sm hover:bg-gray-800
+                   {% if request.url.path == '/settings' %}bg-gray-800 font-medium{% endif %}">
+                    ⚙️ 系统设置
+                </a>
+            </nav>
+            <div class="px-3 py-4 border-t border-gray-700">
+                <a href="/logout" class="block px-3 py-2 rounded text-sm text-gray-400 hover:bg-gray-800 hover:text-white" onclick="AUTH.clear()">
+                    🚪 退出登录
+                </a>
+            </div>
+        </aside>
+        <main class="flex-1 overflow-auto">
+            <div class="p-6">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+    {% endblock %}
+
+    <!-- Toast notification -->
+    <div id="toast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="rounded-lg px-4 py-3 text-white text-sm shadow-lg" id="toast-msg"></div>
+    </div>
+    <script>
+        function showToast(msg, type = 'success') {
+            const el = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-msg');
+            msgEl.className = 'rounded-lg px-4 py-3 text-white text-sm shadow-lg ' +
+                (type === 'error' ? 'bg-red-500' : type === 'warning' ? 'bg-yellow-500' : 'bg-green-500');
+            msgEl.textContent = msg;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 3000);
+        }
+
+        function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

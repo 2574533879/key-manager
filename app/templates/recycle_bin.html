@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}回收站 — 卡密管理系统{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">🗑️ 回收站</h1>
+
+<!-- Batch list -->
+<div class="bg-white rounded-lg shadow overflow-x-auto mb-6">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">批次编号</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">卡密数量</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">预览</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">所属应用</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">删除时间</th>
+                <th class="text-right px-4 py-3 font-medium text-gray-600">操作</th>
+            </tr>
+        </thead>
+        <tbody id="batch-list" class="divide-y divide-gray-100"></tbody>
+    </table>
+    <div id="pagination" class="px-4 py-3 border-t flex justify-between items-center text-sm"></div>
+</div>
+
+<!-- Batch Detail Modal -->
+<div id="detail-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-4xl max-h-[80vh] overflow-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold" id="detail-title">批次详情</h2>
+            <button onclick="closeModal('detail-modal')" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+        </div>
+        <div id="detail-content"></div>
+        <div class="flex justify-end gap-2 mt-4 border-t pt-4">
+            <button onclick="permDeleteCurrentBatch()" class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">永久删除批次</button>
+            <button onclick="restoreCurrentBatch()" class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800">恢复全部</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1, currentBatchId = '';
+const TYPE_LABELS = {day:'天',week:'周',month:'月',quarter:'季',year:'年',permanent:'永久',custom:'自定义'};
+
+async function loadBatches(page = 1) {
+    if (!requireAuth()) return;
+    currentPage = page;
+    try {
+        const data = await AUTH.get(apiUrl(`/recycle?page=${page}&page_size=20`));
+        const items = data.items || [];
+        document.getElementById('batch-list').innerHTML = items.length === 0
+            ? '<tr><td colspan="6" class="px-4 py-12 text-center text-gray-400">回收站为空</td></tr>'
+            : items.map(b => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-mono text-xs">${esc(b.batch_id)}</td>
+                    <td class="px-4 py-3 font-bold">${b.count}</td>
+                    <td class="px-4 py-3 text-xs font-mono">${esc(b.preview_key)}…</td>
+                    <td class="px-4 py-3 text-xs">${esc(b.app_name)}</td>
+                    <td class="px-4 py-3 text-xs text-gray-500">${b.deleted_at}</td>
+                    <td class="px-4 py-3 text-right">
+                        <button onclick="showBatch('${esc(b.batch_id)}')" class="text-blue-600 hover:underline text-xs mr-2">查看</button>
+                        <button onclick="restoreBatch('${esc(b.batch_id)}')" class="text-green-600 hover:underline text-xs mr-2">恢复</button>
+                        <button onclick="permDeleteBatch('${esc(b.batch_id)}')" class="text-red-600 hover:underline text-xs">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+
+        document.getElementById('pagination').innerHTML = `
+            <span class="text-gray-500">共 ${data.total} 批</span>
+            <div class="flex gap-1">
+                <button onclick="loadBatches(${page-1})" ${page<=1?'disabled':''} class="px-3 py-1 border rounded text-sm ${page<=1?'opacity-40':'hover:bg-gray-50'}">上一页</button>
+                <button onclick="loadBatches(${page+1})" ${items.length<20?'disabled':''} class="px-3 py-1 border rounded text-sm ${items.length<20?'opacity-40':'hover:bg-gray-50'}">下一页</button>
+            </div>`;
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function showBatch(batchId) {
+    currentBatchId = batchId;
+    try {
+        const data = await AUTH.get(apiUrl(`/recycle/${batchId}`));
+        document.getElementById('detail-title').textContent = `批次 ${batchId}`;
+        document.getElementById('detail-content').innerHTML = `
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50"><tr>
+                    <th class="text-left px-3 py-2">卡密</th><th class="text-left px-3 py-2">应用</th>
+                    <th class="text-left px-3 py-2">类型</th><th class="text-left px-3 py-2">状态</th>
+                    <th class="text-left px-3 py-2">设备数</th><th class="text-left px-3 py-2">过期时间</th>
+                    <th class="text-right px-3 py-2">恢复</th>
+                </tr></thead>
+                <tbody>${data.items.map(k => `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-3 py-2 font-mono text-xs">${esc(k.key_code)}</td>
+                        <td class="px-3 py-2 text-xs">${esc(k.app_name)}</td>
+                        <td class="px-3 py-2 text-xs">${TYPE_LABELS[k.key_type]||k.key_type}</td>
+                        <td class="px-3 py-2 text-xs">${k.status}</td>
+                        <td class="px-3 py-2 text-xs">${k.device_count}</td>
+                        <td class="px-3 py-2 text-xs">${k.expire_time||'-'}</td>
+                        <td class="px-3 py-2 text-right">
+                            <button onclick="restoreKey(${k.bin_id})" class="text-green-600 hover:underline text-xs">恢复</button>
+                        </td>
+                    </tr>`).join('')}</tbody>
+            </table>`;
+        openModal('detail-modal');
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function restoreBatch(batchId) {
+    if (!confirm('确定恢复此批次的所有卡密？')) return;
+    try {
+        const result = await AUTH.post(apiUrl(`/recycle/${batchId}/restore`), null);
+        showToast(result.message);
+        loadBatches(currentPage);
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function restoreCurrentBatch() {
+    if (!confirm('确定恢复当前批次的所有卡密？')) return;
+    try {
+        const result = await AUTH.post(apiUrl(`/recycle/${currentBatchId}/restore`), null);
+        showToast(result.message);
+        closeModal('detail-modal');
+        loadBatches(currentPage);
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function restoreKey(binId) {
+    if (!confirm('确定恢复此卡密？')) return;
+    try {
+        const result = await AUTH.post(apiUrl(`/recycle/${currentBatchId}/restore`), [binId]);
+        showToast(result.message);
+        showBatch(currentBatchId); // refresh
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function permDeleteBatch(batchId) {
+    if (!confirm('⚠️ 确定永久删除此批次？此操作不可恢复！')) return;
+    try {
+        const result = await AUTH.del(apiUrl(`/recycle/${batchId}`));
+        showToast(result.message);
+        loadBatches(currentPage);
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function permDeleteCurrentBatch() {
+    if (!confirm('⚠️ 确定永久删除当前批次？此操作不可恢复！')) return;
+    try {
+        const result = await AUTH.del(apiUrl(`/recycle/${currentBatchId}`));
+        showToast(result.message);
+        closeModal('detail-modal');
+        loadBatches(currentPage);
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+function esc(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+loadApiPrefix().then(loadBatches);
+</script>
+{% endblock %}

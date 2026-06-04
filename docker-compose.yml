@@ -1,0 +1,15 @@
+services:
+  key-manager:
+    build: .
+    container_name: key-manager
+    environment:
+      - TZ=Asia/Shanghai
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - JWT_SECRET=${JWT_SECRET:-change-me-to-a-random-secret}
+      - DATABASE_URL=sqlite:////app/data/app.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

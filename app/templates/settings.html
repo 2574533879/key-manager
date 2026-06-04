@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}系统设置 — 卡密管理系统{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">系统设置</h1>
+
+<div class="max-w-lg space-y-6">
+
+    <!-- API Prefix -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold mb-2">API 路由前缀</h2>
+        <p class="text-sm text-gray-500 mb-3">修改后立即生效（AJAX 请求使用新前缀）。已打开的页面需刷新。不影响 <code class="bg-gray-100 px-1 rounded">/api/client/auth</code>。</p>
+        <div class="flex gap-2">
+            <input type="text" id="api-prefix" class="flex-1 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="/api">
+            <button onclick="savePrefix()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800">保存</button>
+        </div>
+        <p class="text-xs text-gray-400 mt-2" id="prefix-note"></p>
+    </div>
+
+    <!-- Heartbeat -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold mb-2">心跳在线阈值（分钟）</h2>
+        <p class="text-sm text-gray-500 mb-3">客户端在此时间内有认证记录即视为"正在使用"。</p>
+        <div class="flex gap-2">
+            <input type="number" id="heartbeat" min="1" max="1440" class="w-32 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="saveHeartbeat()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800">保存</button>
+        </div>
+    </div>
+
+    <!-- OTP Rate Limit -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold mb-2">OTP 安全限制</h2>
+        <div class="flex gap-4">
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">最大错误次数</label>
+                <input type="number" id="otp-attempts" min="1" max="20" class="w-20 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">锁定时间（分钟）</label>
+                <input type="number" id="otp-lockout" min="1" max="60" class="w-20 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="self-end">
+                <button onclick="saveOtpLimit()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OTP -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold mb-2">两步验证 (OTP)</h2>
+        <p class="text-sm text-gray-500 mb-3">启用后登录需输入身份验证器（如 Google Authenticator）中的6位动态码。</p>
+        <div id="otp-section">
+            <div id="otp-disabled">
+                <button onclick="setupOtp()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800">启用两步验证</button>
+            </div>
+            <div id="otp-qr" class="hidden space-y-3">
+                <p class="text-sm font-medium">请使用身份验证器 App 扫描二维码：</p>
+                <img id="otp-qr-img" class="border rounded w-48 h-48" src="" alt="QR Code">
+                <div class="text-xs text-gray-500">
+                    或手动输入密钥：<code id="otp-secret-display" class="bg-gray-100 px-2 py-1 rounded select-all"></code>
+                </div>
+                <div class="flex gap-2 items-center">
+                    <input type="text" id="otp-verify-code" maxlength="6" placeholder="输入6位动态码"
+                           class="border rounded-lg px-3 py-2 w-40 text-center text-lg tracking-widest font-mono focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button onclick="verifyOtpSetup()" class="bg-green-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-800">确认启用</button>
+                    <button onclick="cancelOtpSetup()" class="text-gray-400 text-sm hover:text-gray-600">取消</button>
+                </div>
+            </div>
+            <div id="otp-enabled" class="hidden space-y-3">
+                <div class="flex items-center gap-2">
+                    <span class="inline-block w-3 h-3 rounded-full bg-green-500"></span>
+                    <span class="text-sm font-medium text-green-700">两步验证已启用</span>
+                </div>
+                <div>
+                    <input type="text" id="otp-disable-code" maxlength="6" placeholder="输入动态码以禁用"
+                           class="border rounded-lg px-3 py-2 w-40 text-center text-lg tracking-widest font-mono focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button onclick="disableOtp()" class="ml-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700">禁用</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-bold mb-2">修改管理员密码</h2>
+        <div class="space-y-3 max-w-xs">
+            <input type="password" id="old-pwd" placeholder="原密码" class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="password" id="new-pwd" placeholder="新密码（至少6位）" class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="changePwd()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800">修改密码</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadSettings() {
+    if (!requireAuth()) return;
+    await loadApiPrefix();
+    try {
+        const data = await AUTH.get(apiUrl('/settings'));
+        document.getElementById('api-prefix').value = data.api_prefix;
+        document.getElementById('heartbeat').value = data.heartbeat_threshold_minutes;
+        document.getElementById('otp-attempts').value = data.otp_max_attempts;
+        document.getElementById('otp-lockout').value = data.otp_lockout_minutes;
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function savePrefix() {
+    const val = document.getElementById('api-prefix').value.trim();
+    if (!val) return showToast('前缀不能为空', 'warning');
+    try {
+        await AUTH.put(apiUrl('/settings'), { api_prefix: val });
+        API_PREFIX = val.startsWith('/') ? val : '/' + val;
+        showToast('前缀已更新，页面刷新后 JS 请求将使用新路径');
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function saveHeartbeat() {
+    const val = parseInt(document.getElementById('heartbeat').value);
+    if (!val || val < 1) return showToast('请输入有效数值', 'warning');
+    try {
+        await AUTH.put(apiUrl('/settings'), { heartbeat_threshold_minutes: val });
+        showToast('心跳阈值已更新');
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function saveOtpLimit() {
+    const attempts = parseInt(document.getElementById('otp-attempts').value);
+    const lockout = parseInt(document.getElementById('otp-lockout').value);
+    if (!attempts || !lockout) return showToast('请填写完整', 'warning');
+    try {
+        await AUTH.put(apiUrl('/settings'), { otp_max_attempts: attempts, otp_lockout_minutes: lockout });
+        showToast('已更新');
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function changePwd() {
+    const oldPwd = document.getElementById('old-pwd').value;
+    const newPwd = document.getElementById('new-pwd').value;
+    if (!oldPwd || !newPwd) return showToast('请填写完整', 'warning');
+    if (newPwd.length < 6) return showToast('新密码至少6位', 'warning');
+    try {
+        const result = await AUTH.post(apiUrl('/auth/change-password'), {
+            old_password: oldPwd, new_password: newPwd,
+        });
+        showToast(result.message);
+        document.getElementById('old-pwd').value = '';
+        document.getElementById('new-pwd').value = '';
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ── OTP ──
+async function loadOtpStatus() {
+    try {
+        const data = await AUTH.get(apiUrl('/settings/otp-status'));
+        if (data.otp_enabled) {
+            document.getElementById('otp-disabled').classList.add('hidden');
+            document.getElementById('otp-enabled').classList.remove('hidden');
+        }
+    } catch(e) { /* ignore */ }
+}
+
+async function setupOtp() {
+    try {
+        const data = await AUTH.post(apiUrl('/settings/otp-setup'), null);
+        pendingOtpSecret = data.otp_secret;
+        document.getElementById('otp-qr-img').src = data.qr_code;
+        document.getElementById('otp-secret-display').textContent = data.otp_secret;
+        document.getElementById('otp-disabled').classList.add('hidden');
+        document.getElementById('otp-qr').classList.remove('hidden');
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function verifyOtpSetup() {
+    const code = document.getElementById('otp-verify-code').value.trim();
+    if (code.length !== 6) return showToast('请输入6位动态码', 'warning');
+    try {
+        const result = await AUTH.post(apiUrl('/settings/otp-verify-setup'), { code, secret: pendingOtpSecret });
+        showToast(result.message);
+        pendingOtpSecret = '';
+        document.getElementById('otp-qr').classList.add('hidden');
+        document.getElementById('otp-enabled').classList.remove('hidden');
+        document.getElementById('otp-verify-code').value = '';
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+function cancelOtpSetup() {
+    document.getElementById('otp-qr').classList.add('hidden');
+    document.getElementById('otp-disabled').classList.remove('hidden');
+}
+
+async function disableOtp() {
+    const code = document.getElementById('otp-disable-code').value.trim();
+    if (code.length !== 6) return showToast('请输入6位动态码', 'warning');
+    try {
+        await AUTH.post(apiUrl('/settings/otp-disable'), { code });
+        showToast('OTP已禁用');
+        document.getElementById('otp-enabled').classList.add('hidden');
+        document.getElementById('otp-disabled').classList.remove('hidden');
+        document.getElementById('otp-disable-code').value = '';
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+loadApiPrefix().then(() => { loadSettings(); loadOtpStatus(); });
+</script>
+{% endblock %}

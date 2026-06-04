@@ -1,0 +1,481 @@
+{% extends "base.html" %}
+{% block title %}卡密管理 — 卡密管理系统{% endblock %}
+
+{% block head %}
+<style>
+    .filter-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+    .filter-item { flex: 0 0 auto; min-width: 120px; }
+    .filter-item label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 2px; }
+    .filter-item select, .filter-item input {
+        width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 5px 8px; font-size: 13px;
+    }
+    .filter-item select:focus, .filter-item input:focus { outline: none; ring: 2px; border-color: #3b82f6; }
+    .badge { display: inline-block; padding: 1px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; }
+    .badge-active { background: #dbeafe; color: #1d4ed8; }
+    .badge-used { background: #d1fae5; color: #065f46; }
+    .badge-expired { background: #fee2e2; color: #991b1b; }
+    .badge-disabled { background: #f3f4f6; color: #6b7280; }
+    .online-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+    .online-dot.on { background: #22c55e; }
+    .online-dot.off { background: #d1d5db; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">卡密管理</h1>
+
+<!-- Filters -->
+<div class="bg-white rounded-lg shadow p-4 mb-4">
+    <div class="filter-row">
+        <div class="filter-item" style="min-width:160px;">
+            <label>卡密搜索</label>
+            <input type="text" id="f-keyword" placeholder="卡密码" onchange="loadKeys()">
+        </div>
+        <div class="filter-item" style="min-width:140px;">
+            <label>应用搜索</label>
+            <input type="text" id="f-app-keyword" placeholder="应用名称" onchange="loadKeys()">
+        </div>
+        <div class="filter-item" style="min-width:120px;">
+            <label>批次号</label>
+            <input type="text" id="f-batch" placeholder="批次号" onchange="loadKeys()">
+        </div>
+        <div class="filter-item">
+            <label>应用</label>
+            <select id="f-app"><option value="">全部</option></select>
+        </div>
+        <div class="filter-item">
+            <label>类型</label>
+            <select id="f-type" onchange="loadKeys()">
+                <option value="">全部</option><option value="day">天卡</option><option value="week">周卡</option>
+                <option value="month">月卡</option><option value="quarter">季卡</option>
+                <option value="year">年卡</option><option value="permanent">永久</option><option value="custom">自定义</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>状态</label>
+            <select id="f-status" onchange="loadKeys()">
+                <option value="">全部</option><option value="active">未使用</option>
+                <option value="used">已激活</option><option value="expired">已过期</option><option value="disabled">已禁用</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>在线状态</label>
+            <select id="f-online" onchange="loadKeys()">
+                <option value="">全部</option><option value="1">在线</option><option value="0">离线</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>过期日期从</label>
+            <input type="date" id="f-exp-start" onchange="loadKeys()">
+        </div>
+        <div class="filter-item">
+            <label>过期日期至</label>
+            <input type="date" id="f-exp-end" onchange="loadKeys()">
+        </div>
+        <div class="filter-item">
+            <label>创建日期从</label>
+            <input type="date" id="f-created-start" onchange="loadKeys()">
+        </div>
+        <div class="filter-item">
+            <label>创建日期至</label>
+            <input type="date" id="f-created-end" onchange="loadKeys()">
+        </div>
+        <div class="filter-item" style="align-self:flex-end;padding-bottom:1px;">
+            <button onclick="resetFilters()" class="px-3 py-[6px] border rounded text-xs hover:bg-gray-50">重置</button>
+        </div>
+    </div>
+</div>
+
+<!-- Actions -->
+<div class="flex justify-between items-center mb-4">
+    <div class="flex gap-2 flex-wrap items-center">
+        <button onclick="openGenerateModal()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800">+ 批量生成</button>
+        <button onclick="exportCSV()" class="bg-green-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-800">⬇ 导出CSV</button>
+        <button onclick="deleteAllFiltered()" class="bg-red-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-red-700" id="btn-delete-filtered">🗑 删除筛选结果</button>
+    </div>
+    <span class="text-sm text-gray-500" id="total-count"></span>
+</div>
+
+<!-- Batch action bar (hidden until selection) -->
+<div id="batch-bar" class="hidden bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 mb-3 flex items-center justify-between">
+    <span class="text-sm text-blue-800">
+        已选 <b id="selected-count">0</b> 张卡密
+        <button onclick="selectAllPage()" class="ml-3 text-blue-600 hover:underline text-xs">全选当页</button>
+        <button onclick="clearSelection()" class="ml-2 text-gray-500 hover:underline text-xs">清除选择</button>
+    </span>
+    <button onclick="deleteSelected()" class="bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700">删除选中</button>
+</div>
+
+<!-- Table -->
+<div class="bg-white rounded-lg shadow overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="w-10 px-2 py-3"><input type="checkbox" id="select-all" onchange="toggleSelectAll()" class="rounded"></th>
+                <th class="text-left px-3 py-3 font-medium text-gray-600">卡密</th>
+                <th class="text-left px-3 py-3 font-medium text-gray-600">批次</th>
+                <th class="text-left px-3 py-3 font-medium text-gray-600">应用</th>
+                <th class="text-left px-3 py-3 font-medium text-gray-600">类型</th>
+                <th class="text-left px-3 py-3 font-medium text-gray-600">状态</th>
+                <th class="text-left px-3 py-3 font-medium text-gray-600">设备</th>
+                <th class="text-left px-3 py-3 font-medium text-gray-600">在线</th>
+                <th class="text-left px-3 py-3 font-medium text-gray-600">开始时间</th>
+                <th class="text-left px-3 py-3 font-medium text-gray-600">过期时间</th>
+                <th class="text-left px-3 py-3 font-medium text-gray-600">创建时间</th>
+                <th class="text-right px-3 py-3 font-medium text-gray-600">操作</th>
+            </tr>
+        </thead>
+        <tbody id="key-list" class="divide-y divide-gray-100"></tbody>
+    </table>
+    <div id="pagination" class="px-4 py-3 border-t flex justify-between items-center text-sm"></div>
+</div>
+
+<!-- Generate Modal -->
+<div id="gen-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+        <h2 class="text-lg font-bold mb-4">批量生成卡密</h2>
+        <div class="space-y-3">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">应用 *</label>
+                <select id="gen-app" class="w-full border rounded-lg px-3 py-2"></select>
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">类型 *</label>
+                <select id="gen-type" class="w-full border rounded-lg px-3 py-2" onchange="toggleCustomDays()">
+                    <option value="day">天卡 (1天)</option><option value="week">周卡 (7天)</option>
+                    <option value="month" selected>月卡 (30天)</option><option value="quarter">季卡 (90天)</option>
+                    <option value="year">年卡 (365天)</option><option value="permanent">永久</option><option value="custom">自定义天数</option>
+                </select>
+            </div>
+            <div id="custom-days-row" class="hidden"><label class="block text-sm font-medium text-gray-700 mb-1">自定义天数 *</label>
+                <input type="number" id="gen-custom-days" value="1" min="1" class="w-full border rounded-lg px-3 py-2">
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">生成数量</label>
+                <input type="number" id="gen-count" value="1" min="1" max="1000" class="w-full border rounded-lg px-3 py-2">
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">设备限制</label>
+                <input type="number" id="gen-limit" value="1" min="1" class="w-full border rounded-lg px-3 py-2">
+            </div>
+            <div class="flex gap-2">
+                <div class="flex-1"><label class="block text-sm font-medium text-gray-700 mb-1">前缀（可选）</label>
+                    <input type="text" id="gen-prefix" placeholder="如 VIP-" class="w-full border rounded-lg px-3 py-2"></div>
+                <div class="flex-1"><label class="block text-sm font-medium text-gray-700 mb-1">后缀（可选）</label>
+                    <input type="text" id="gen-suffix" placeholder="如 -2024" class="w-full border rounded-lg px-3 py-2"></div>
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">过期天数（留空=按类型默认）</label>
+                <input type="number" id="gen-expire" placeholder="留空使用默认" min="1" class="w-full border rounded-lg px-3 py-2">
+            </div>
+        </div>
+        <div class="flex justify-end gap-2 mt-4">
+            <button onclick="closeModal('gen-modal')" class="px-4 py-2 border rounded-lg text-sm">取消</button>
+            <button onclick="doGenerate()" class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm">生成</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="edit-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+        <h2 class="text-lg font-bold mb-4">编辑卡密</h2>
+        <input type="hidden" id="edit-key-id">
+        <div class="space-y-3">
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">类型</label>
+                <select id="edit-key-type" class="w-full border rounded-lg px-3 py-2">
+                    <option value="day">天卡</option><option value="week">周卡</option>
+                    <option value="month">月卡</option><option value="quarter">季卡</option>
+                    <option value="year">年卡</option><option value="permanent">永久</option><option value="custom">自定义</option>
+                </select>
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">状态</label>
+                <select id="edit-key-status" class="w-full border rounded-lg px-3 py-2">
+                    <option value="active">未使用</option><option value="used">已激活</option>
+                    <option value="disabled">已禁用</option>
+                </select>
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">设备限制</label>
+                <input type="number" id="edit-key-limit" min="1" class="w-full border rounded-lg px-3 py-2">
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">过期时间 (YYYY-MM-DD HH:MM:SS)</label>
+                <input type="text" id="edit-key-expire" placeholder="2026-12-31 23:59:59" class="w-full border rounded-lg px-3 py-2">
+            </div>
+        </div>
+        <div class="flex justify-end gap-2 mt-4">
+            <button onclick="closeModal('edit-modal')" class="px-4 py-2 border rounded-lg text-sm">取消</button>
+            <button onclick="doUpdate()" class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm">保存</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1, currentPageSize = 20;
+
+function changePageSize() {
+    currentPageSize = parseInt(document.getElementById('page-size-select').value);
+    currentPage = 1;
+    loadKeys(1);
+}
+
+function getFilterParams() {
+    const params = new URLSearchParams();
+    const v = id => document.getElementById(id)?.value || '';
+    if (v('f-keyword')) params.set('keyword', v('f-keyword'));
+    if (v('f-app-keyword')) params.set('app_keyword', v('f-app-keyword'));
+    if (v('f-batch')) params.set('batch_id', v('f-batch'));
+    if (v('f-app')) params.set('app_id', v('f-app'));
+    if (v('f-type')) params.set('key_type', v('f-type'));
+    if (v('f-status')) params.set('status', v('f-status'));
+    if (v('f-online') !== '') params.set('online', v('f-online'));
+    if (v('f-exp-start')) params.set('expire_start', v('f-exp-start'));
+    if (v('f-exp-end')) params.set('expire_end', v('f-exp-end'));
+    if (v('f-created-start')) params.set('created_start', v('f-created-start'));
+    if (v('f-created-end')) params.set('created_end', v('f-created-end'));
+    return params;
+}
+
+function statusBadge(s) {
+    const map = { active: 'badge-active', used: 'badge-used', expired: 'badge-expired', disabled: 'badge-disabled' };
+    const label = { active: '未使用', used: '已激活', expired: '已过期', disabled: '已禁用' };
+    return `<span class="badge ${map[s]||'badge-disabled'}">${label[s]||s}</span>`;
+}
+
+function typeLabel(t) {
+    return { day:'天卡', week:'周卡', month:'月卡', quarter:'季卡', year:'年卡', permanent:'永久', custom:'自定义', trial:'试用' }[t] || t;
+}
+
+function toggleCustomDays() {
+    const isCustom = document.getElementById('gen-type').value === 'custom';
+    document.getElementById('custom-days-row').classList.toggle('hidden', !isCustom);
+    document.getElementById('gen-expire').parentElement.classList.toggle('hidden', isCustom);
+}
+
+async function loadKeys(page = 1) {
+    if (!requireAuth()) return;
+    currentPage = page;
+    const params = getFilterParams();
+    params.set('page', page);
+    params.set('page_size', currentPageSize);
+    try {
+        const data = await AUTH.get(apiUrl(`/keys?${params.toString()}`));
+        const tbody = document.getElementById('key-list');
+        const items = data.items || [];
+        tbody.innerHTML = items.map(k => `
+            <tr class="hover:bg-gray-50">
+                <td class="px-2 py-2"><input type="checkbox" value="${k.id}" class="key-checkbox rounded" onchange="updateBatchBar()"></td>
+                <td class="px-3 py-2 font-mono text-xs">${esc(k.key_code)}</td>
+                <td class="px-3 py-2 font-mono text-xs text-gray-500">${k.batch_id ? `<button onclick="event.stopPropagation();delBatch('${esc(k.batch_id)}')" class="text-red-500 hover:underline font-sans" title="删除整批">✕</button> ${esc(k.batch_id)}` : '-'}</td>
+                <td class="px-3 py-2">${esc(k.app_name)}</td>
+                <td class="px-3 py-2 text-xs">${typeLabel(k.key_type)}</td>
+                <td class="px-3 py-2">${statusBadge(k.status)}</td>
+                <td class="px-3 py-2 text-xs">${k.used_count}/${k.device_limit}</td>
+                <td class="px-3 py-2"><span class="online-dot ${k.online?'on':'off'}" title="${k.online?'在线':'离线'}"></span></td>
+                <td class="px-3 py-2 text-xs text-gray-500">${k.start_time||'-'}</td>
+                <td class="px-3 py-2 text-xs ${k.status==='expired'?'text-red-500':'text-gray-500'}">${k.expire_time||'-'}</td>
+                <td class="px-3 py-2 text-xs text-gray-400">${k.created_at}</td>
+                <td class="px-3 py-2 text-right">
+                    <a href="/keys/${k.id}" class="text-blue-600 hover:underline text-xs mr-2">详情</a>
+                    <button onclick="editKey(${k.id})" class="text-blue-600 hover:underline text-xs mr-2">编辑</button>
+                    <button onclick="delKey(${k.id}, '${esc(k.key_code)}')" class="text-red-600 hover:underline text-xs">删除</button>
+                </td>
+            </tr>
+        `).join('');
+        document.getElementById('total-count').textContent = `共 ${data.total} 张卡密`;
+        document.getElementById('pagination').innerHTML = paginationHTML(data.total, page, 20);
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+function paginationHTML(total, page, pageSize) {
+    const totalPages = Math.ceil(total / pageSize) || 1;
+    const sizes = [20, 50, 100, 200];
+    const sizeOpts = sizes.map(s => `<option value="${s}" ${s === currentPageSize ? 'selected' : ''}>${s}</option>`).join('');
+    return `
+        <span class="text-gray-500">共 ${total} 条 (第 ${page}/${totalPages} 页)</span>
+        <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-400">每页</span>
+            <select id="page-size-select" onchange="changePageSize()" class="border rounded px-2 py-1 text-xs">${sizeOpts}</select>
+            <div class="flex gap-1">
+                <button onclick="loadKeys(${page-1})" ${page<=1?'disabled':''} class="px-3 py-1 border rounded text-sm ${page<=1?'opacity-40':'hover:bg-gray-50'}">上一页</button>
+                <button onclick="loadKeys(${page+1})" ${page>=totalPages?'disabled':''} class="px-3 py-1 border rounded text-sm ${page>=totalPages?'opacity-40':'hover:bg-gray-50'}">下一页</button>
+            </div>
+        </div>`;
+}
+
+function resetFilters() {
+    ['f-keyword','f-app-keyword','f-batch','f-app','f-type','f-status','f-online','f-exp-start','f-exp-end','f-created-start','f-created-end'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    loadKeys();
+}
+
+// ── Load app options for filters & generate ──
+async function loadAppOptions() {
+    try {
+        const apps = await AUTH.get(apiUrl('/applications?page_size=100'));
+        const opts = (apps||[]).map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('');
+        document.getElementById('f-app').innerHTML = '<option value="">全部</option>' + opts;
+        document.getElementById('gen-app').innerHTML = opts;
+    } catch(e) { console.error(e); }
+}
+
+// ── Generate ──
+function openGenerateModal() {
+    loadAppOptions();
+    openModal('gen-modal');
+}
+
+async function doGenerate() {
+    const appId = parseInt(document.getElementById('gen-app').value);
+    if (!appId) return showToast('请选择应用', 'warning');
+    const body = {
+        app_id: appId,
+        key_type: document.getElementById('gen-type').value,
+        count: parseInt(document.getElementById('gen-count').value) || 1,
+        device_limit: parseInt(document.getElementById('gen-limit').value) || 1,
+        prefix: document.getElementById('gen-prefix').value.trim(),
+        suffix: document.getElementById('gen-suffix').value.trim(),
+    };
+    if (body.key_type === 'custom') {
+        const customDays = parseInt(document.getElementById('gen-custom-days').value);
+        if (!customDays || customDays < 1) return showToast('请输入有效天数', 'warning');
+        body.expire_days = customDays;
+    } else {
+        const expireDays = document.getElementById('gen-expire').value;
+        if (expireDays) body.expire_days = parseInt(expireDays);
+    }
+    try {
+        const result = await AUTH.post(apiUrl('/keys/generate'), body);
+        showToast(result.message);
+        closeModal('gen-modal');
+        loadKeys();
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ── Edit ──
+async function editKey(id) {
+    try {
+        const k = await AUTH.get(apiUrl(`/keys/${id}`));
+        document.getElementById('edit-key-id').value = k.id;
+        document.getElementById('edit-key-type').value = k.key_type;
+        document.getElementById('edit-key-status').value = k.status;
+        document.getElementById('edit-key-limit').value = k.device_limit;
+        document.getElementById('edit-key-expire').value = k.expire_time || '';
+        openModal('edit-modal');
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function doUpdate() {
+    const id = document.getElementById('edit-key-id').value;
+    const body = {
+        key_type: document.getElementById('edit-key-type').value,
+        status: document.getElementById('edit-key-status').value,
+        device_limit: parseInt(document.getElementById('edit-key-limit').value),
+    };
+    const expire = document.getElementById('edit-key-expire').value.trim();
+    if (expire) body.expire_time = expire;
+    try {
+        await AUTH.put(apiUrl(`/keys/${id}`), body);
+        showToast('更新成功');
+        closeModal('edit-modal');
+        loadKeys(currentPage);
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ── Delete ──
+async function delKey(id, code) {
+    if (!confirm(`确定删除卡密 [${code}]？`)) return;
+    try {
+        await AUTH.del(apiUrl(`/keys/${id}`));
+        showToast('删除成功');
+        loadKeys(currentPage);
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ── Export ──
+async function exportCSV() {
+    const params = getFilterParams();
+    showToast('正在导出...');
+    try {
+        const resp = await AUTH.fetch(apiUrl(`/keys/export/csv?${params.toString()}`));
+        if (!resp.ok) throw new Error('导出失败');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `keys_export_${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('导出成功');
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ── Selection & batch ──
+let selectedIds = new Set();
+
+function updateBatchBar() {
+    const checkboxes = document.querySelectorAll('.key-checkbox:checked');
+    selectedIds = new Set(Array.from(checkboxes).map(cb => parseInt(cb.value)));
+    document.getElementById('selected-count').textContent = selectedIds.size;
+    document.getElementById('batch-bar').classList.toggle('hidden', selectedIds.size === 0);
+    document.getElementById('select-all').checked = false;
+}
+
+function toggleSelectAll() {
+    const checked = document.getElementById('select-all').checked;
+    document.querySelectorAll('.key-checkbox').forEach(cb => { cb.checked = checked; });
+    updateBatchBar();
+}
+
+function selectAllPage() {
+    document.querySelectorAll('.key-checkbox').forEach(cb => { cb.checked = true; });
+    updateBatchBar();
+}
+
+function clearSelection() {
+    document.querySelectorAll('.key-checkbox').forEach(cb => { cb.checked = false; });
+    selectedIds.clear();
+    updateBatchBar();
+}
+
+async function deleteSelected() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`确定将 ${selectedIds.size} 张卡密移入回收站？`)) return;
+    try {
+        const result = await AUTH.post(apiUrl('/keys/batch-delete'), { ids: Array.from(selectedIds) });
+        showToast(result.message);
+        clearSelection();
+        loadKeys(currentPage);
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function delBatch(batchId) {
+    if (!confirm(`确定删除批次 [${batchId}] 的所有卡密？\\n将移入回收站。`)) return;
+    try {
+        const result = await AUTH.del(apiUrl(`/keys/batch/${encodeURIComponent(batchId)}`));
+        showToast(result.message);
+        loadKeys(currentPage);
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function deleteAllFiltered() {
+    const total = parseInt(document.getElementById('total-count').textContent.match(/\d+/)?.[0] || '0');
+    if (total === 0) return showToast('没有符合条件的卡密', 'warning');
+    if (!confirm(`⚠️ 确定将当前筛选条件下的【全部 ${total} 张】卡密移入回收站？\n\n此操作不可撤销，请确认。`)) return;
+    if (!confirm(`再次确认：删除 ${total} 张卡密？`)) return;
+
+    const params = getFilterParams();
+    try {
+        const result = await AUTH.post(apiUrl(`/keys/delete-filtered?${params.toString()}`), {});
+        showToast(result.message);
+        loadKeys(currentPage);
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+function esc(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Init ──
+loadApiPrefix().then(() => { loadKeys(); loadAppOptions(); });
+</script>
+{% endblock %}

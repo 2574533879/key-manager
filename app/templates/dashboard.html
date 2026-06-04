@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 — 卡密管理系统{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">仪表盘</h1>
+
+<!-- Global stats -->
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-8">
+    <div class="bg-white rounded-lg shadow p-3">
+        <div class="text-xs text-gray-500">卡密总数</div>
+        <div class="text-xl font-bold text-gray-800" id="stat-total">-</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-3">
+        <div class="text-xs text-gray-500">活跃</div>
+        <div class="text-xl font-bold text-blue-600" id="stat-active">-</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-3">
+        <div class="text-xs text-gray-500">在线</div>
+        <div class="text-xl font-bold text-green-600" id="stat-online">-</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-3">
+        <div class="text-xs text-gray-500">即将过期</div>
+        <div class="text-xl font-bold text-yellow-600" id="stat-expiring">-</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-3">
+        <div class="text-xs text-gray-500">已过期</div>
+        <div class="text-xl font-bold text-red-600" id="stat-expired">-</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-3">
+        <div class="text-xs text-gray-500">已禁用</div>
+        <div class="text-xl font-bold text-gray-400" id="stat-disabled">-</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-3">
+        <div class="text-xs text-gray-500">应用数</div>
+        <div class="text-xl font-bold text-purple-600" id="stat-apps">-</div>
+    </div>
+</div>
+
+<!-- Per-app breakdown -->
+<h2 class="text-lg font-bold mb-3">各应用统计</h2>
+<div id="per-app-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+    if (!requireAuth()) return;
+    await loadApiPrefix();
+    try {
+        // Global stats
+        const data = await AUTH.get(apiUrl('/dashboard/stats'));
+        document.getElementById('stat-total').textContent = data.total_keys;
+        document.getElementById('stat-active').textContent = data.active_keys;
+        document.getElementById('stat-online').textContent = data.online_keys;
+        document.getElementById('stat-expiring').textContent = data.expiring_soon;
+        document.getElementById('stat-expired').textContent = data.expired_keys;
+        document.getElementById('stat-disabled').textContent = data.disabled_keys;
+        document.getElementById('stat-apps').textContent = data.total_applications;
+
+        // Per-app stats
+        const perApp = await AUTH.get(apiUrl('/dashboard/per-app'));
+        const cards = document.getElementById('per-app-cards');
+        if (perApp.apps.length === 0) {
+            cards.innerHTML = '<div class="text-gray-400 text-sm col-span-full">暂无应用，请先创建应用</div>';
+        } else {
+            cards.innerHTML = perApp.apps.map(a => `
+                <div class="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <div class="font-semibold text-gray-800">${esc(a.app_name)}</div>
+                            <div class="text-xs text-gray-400 font-mono">${esc(a.app_code)}</div>
+                        </div>
+                        <span class="text-sm font-bold text-gray-600">${a.total} 张</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-xs">
+                        <div class="bg-blue-50 rounded p-2 text-center">
+                            <div class="text-blue-600 font-bold">${a.active}</div>
+                            <div class="text-gray-500">活跃</div>
+                        </div>
+                        <div class="bg-green-50 rounded p-2 text-center">
+                            <div class="text-green-600 font-bold">${a.online}</div>
+                            <div class="text-gray-500">在线</div>
+                        </div>
+                        <div class="bg-orange-50 rounded p-2 text-center">
+                            <div class="text-orange-600 font-bold">${a.used_devices}</div>
+                            <div class="text-gray-500">绑定设备</div>
+                        </div>
+                        <div class="bg-yellow-50 rounded p-2 text-center">
+                            <div class="text-yellow-600 font-bold">${a.expiring}</div>
+                            <div class="text-gray-500">将过期</div>
+                        </div>
+                        <div class="bg-red-50 rounded p-2 text-center">
+                            <div class="text-red-600 font-bold">${a.expired}</div>
+                            <div class="text-gray-500">已过期</div>
+                        </div>
+                        <div class="bg-gray-100 rounded p-2 text-center">
+                            <div class="text-gray-500 font-bold">${a.disabled}</div>
+                            <div class="text-gray-400">已禁用</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+    } catch(e) {
+        showToast('加载失败: ' + e.message, 'error');
+    }
+})();
+function esc(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+{% endblock %}
